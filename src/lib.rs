@@ -31,11 +31,10 @@
 //! this, if an exclusive holder panics, the lock is poisonned and no other access to the lock will
 //! be granted.
 
-#![feature(optin_builtin_traits)]
-#![feature(unsafe_destructor)]
+// #![feature(optin_builtin_traits)]
 #![feature(core)]
-#![feature(std_misc)]
 #![feature(test)]
+#![feature(negative_impls)]
 extern crate time;
 
 use std::cell::UnsafeCell;
@@ -70,7 +69,7 @@ unsafe impl Sync for Flag {}
 impl Flag {
     #[inline]
     fn new() -> Flag {
-        Flag { failed : UnsafeCell { value : false }}
+        Flag { failed : UnsafeCell::new(false)}
     }
 
     #[inline]
@@ -295,12 +294,12 @@ impl<T : Send + Sync> SpinLock<T> {
     #[inline]
     pub fn try_read(&self) -> TryLockResult<SpinLockReadGuard<T>> {
         if self.count.compare_and_swap(0, 1 | SHARED, Ordering::Acquire) == 0 {
-            return Ok(try!(SpinLockReadGuard::new(self, &self.data)))
+            return Ok(SpinLockReadGuard::new(self, &self.data)?)
         } else {
             let count = self.count.load(Ordering::Relaxed);
             if count & SHARED == SHARED && 
                 self.count.compare_and_swap(count, count + 1, Ordering::Acquire) == count { 
-                return Ok(try!(SpinLockReadGuard::new(self, &self.data)))
+                return Ok(SpinLockReadGuard::new(self, &self.data)?)
             }
             return Err(TryLockError::WouldBlock)
         }
@@ -332,7 +331,7 @@ impl<T : Send + Sync> SpinLock<T> {
     /// ```
     pub fn try_write(&self) -> TryLockResult<SpinLockWriteGuard<T>> {
         if self.count.compare_and_swap(0, 1, Ordering::Acquire) == 0 {
-            Ok(try!(SpinLockWriteGuard::new(self, &self.data)))
+            Ok(SpinLockWriteGuard::new(self, &self.data)?)
         } else {
             Err(TryLockError::WouldBlock)
         }
@@ -387,7 +386,6 @@ impl<'a, T> Deref for SpinLockReadGuard<'a, T> {
     fn deref(&self) -> &T { unsafe { &*self.data.get() } }
 }
 
-#[unsafe_destructor]
 impl<'a, T> Drop for SpinLockReadGuard<'a, T> {
     fn drop(&mut self) {
         self.lock.read_unlock();
@@ -426,7 +424,7 @@ impl<'a, T> DerefMut for SpinLockWriteGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut T { unsafe { &mut *self.data.get() } }
 }
 
-#[unsafe_destructor]
+
 impl<'a, T> Drop for SpinLockWriteGuard<'a, T> {
     fn drop(&mut self) {
         self.lock.poison.done(&self.poison);
