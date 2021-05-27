@@ -176,6 +176,7 @@ impl<T : Send + Sync> SpinLock<T> {
         if self.count.fetch_add(1, Ordering::Acquire) != 0 {
             return self.write_contested()
         }
+        println!("write success");
         SpinLockWriteGuard::new(self, &self.data)
     }
 
