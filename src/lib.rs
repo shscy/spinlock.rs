@@ -31,7 +31,6 @@
 //! this, if an exclusive holder panics, the lock is poisonned and no other access to the lock will
 //! be granted.
 
-// #![feature(optin_builtin_traits)]
 #![feature(core)]
 #![feature(test)]
 #![feature(negative_impls)]
@@ -64,6 +63,7 @@ use std::sync::atomic::{Ordering, AtomicUsize};
 
 struct Flag { failed: UnsafeCell<bool> }
 unsafe impl Send for Flag {}
+// because bool type is sync 
 unsafe impl Sync for Flag {}
 
 impl Flag {
@@ -189,6 +189,7 @@ impl<T : Send + Sync> SpinLock<T> {
         // Notify that we want exclusive access
         self.count.fetch_add(EXCLWAIT - 1, Ordering::Relaxed);
         // Clear SHARED flag
+        // ! SHARED ox1111b 64, 什么作用也没
         self.count.fetch_and(! SHARED, Ordering::Relaxed);
         loop {
             // Use relaxed ordering to avoid trashing the cache coherency handling for free 
@@ -240,8 +241,7 @@ impl<T : Send + Sync> SpinLock<T> {
         }
         SpinLockReadGuard::new(self, &self.data)
     }
-
-    // Contested acquire path. Spin on the lock until acquiring or timeout
+    // read 锁的逻辑是 count == 0 或者 count & ShARED = SHARED 
     fn read_contested(&self) -> LockResult<SpinLockReadGuard<T>> {
         let mut i = 0u32;
         let mut base_time : u64 = 0;
@@ -346,7 +346,7 @@ impl<T> SpinLock<T> {
     fn read_unlock(&self) {
         self.count.fetch_sub(1, Ordering::Relaxed);
         // Clear SHARED flag if SHARED count is 0
-        self.count.compare_and_swap(SHARED, 0, Ordering::Relaxed);
+        self.count.compare_and_swap(SHARED, 0, Ordering::Release);
     }
 
     fn write_unlock(&self) {
