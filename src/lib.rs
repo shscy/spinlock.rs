@@ -136,7 +136,7 @@ pub struct SpinLock<T> {
 }
 
 unsafe impl<T: Send + Sync> Send for SpinLock<T> {}
-unsafe impl<T: Send + Sync> Sync for SpinLock<T> {}
+unsafe impl<T: Send + Sync+ Sync> Sync for SpinLock<T> {}
 
 
 impl<T : Send + Sync> SpinLock<T> {
